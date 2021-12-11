@@ -1,0 +1,418 @@
+---
+title: "Bellabeat"
+author: "Sajid Hakim"
+date: "12/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Google Analytics Case Study – Bellabeat
+
+## Background:
+This is the capstone project for the Google Data Analytics course.  
+The scenario consists of me, as a junior data analyst, working for Bellabeat. Bellabeat is a hi-tech maker of health-focused products for women with aspirations to become a bigger player in the global smart device market.  
+  
+
+
+## Assignment:
+Bellabeat’s cofounder, Urska Srsen has asked me to analyze smart device data from Fitbit to gain insight as to how consumers are using smart devices and use this knowledge to guide the marketing strategy of Bellabeat.  
+  
+It should be noted that many others have already dissected this data for insights as part of their Capstone and most of the obvious and logical relationships have been explored. From my point of curiosity, I wanted to attempt at digging a little deeper into the data. For that purpose instead of rehashing the relationshps between steps and calories I'll be looking at weekly minutes of hi-intensity workout. Similarly, instead of looking at the relationship between length of sleep or depth of sleep and workout routine, I'm going to look at the time a participant is actually asleep in bed (instead of tossing and turning, waiting for sleep) out of the total time spent in bed. These may not reveal any eye-opening insights but would satisfy my curiosity and allow me to practice my recently acquired skills.
+
+## Data:
+
+### Source:
+The dataset is one available from Kaggle and provided by Mobius. It consists of personal Fitbit tracking data of 33 eligible Fitbit users. It is public domain data and does not need any licenses for its use.
+
+### Quality:
+*Sample Age:* Data is from 2016 and as such a little dated. There may have been significant changes to the capabilities of smart devices as well as its penetration into the market and mode of usage since then.  
+*Sample Size:* The sample size of 33 is barely large enough to deliver sound statistically valid results.  
+*Sample Bias:* There is potential for sample bias because:  
+a.	Data is described as belonging to “eligible” Fitbit users. There is no explanation as to what criteria were used to define eligibility.  
+b.	Data belongs to those Fitbit users who have given permission for their personal data to be made public. As such, it is not a completely random sample.  
+*Data Reliability:* The data comes from a public source with no way to confirm its accuracy or reliability.   
+*Data Completeness:* Data represents Fitbit tracking of 33 participants over a period of 31 days but not all participants tracked all the same activities over the 31 day period as a result there are many gaps in the data. For example: only 24 participants tracked their sleep data and only 8 participants tracked their weights. Furthermore, the data does not include important variables such as age and height which are required to evaluate the efficacy of activity level being tracked.  
+
+
+## Setting up the Environment
+Install and load packages
+* tidyverse
+* ggplot2
+
+```{r}
+installed.packages("tidyverse")
+library(tidyverse)
+installed.packages("ggplot2")
+library(ggplot2)
+installed.packages("ggpbr")
+library(ggpubr)
+
+```
+
+## Analysis Plan:
+Having reviewed the datasets I am curious to see whether there are any trends visible for daily activity (improvement over the period). I'm going to explore trends for each participant in terms of Total Distance, Total Activity Time, and finally, Activity Speed (Total Distance/Total Activity Time) to see if any trends develop. The results of this analysis will guide to further steps.  
+  
+Next, I referred to the American Heart Association website for objective measures
+and recommendations for daily activity [American Heart Association](https://www.heart.org/en/healthy-living/fitness/fitness-basics/aha-recs-for-physical-activity-in-adults). The website recommends
+150 minutes of "heart-pumping" exercise per week. It also provides a chart for ideal heart-rate during this period but this rate varies by age. Not having participant age as one of the fields in my dataset, I have decided to use the field titled "VeryActiveMinutes" as a proxy to represent work-out time at the recommended heart-rate. I am going to see how many participants consistently 
+work-out at the Very Active level for 150 minutes/week or more. The results of this analysis will guide to further steps. 
+  
+In the next part of my analysis I will explore the impact of the exercise data on
+the participants well-being. In the absence of any other indicators, I will use
+the sleep data as a proxy to explore either a cause-and-effect or a correlation
+between exercise intensity and sleep quality. For this purpose I'm going to 
+use the amount of time a person sleeps as a fraction of the total time spent in bed. This fraction is assumed to indicate how much "tossing and turning" a
+participant does before finally falling off to sleep.
+
+
+## Data Cleansing & Transformation:
+I will be using the dailyActivity_merged.csv data file which presents each participants daily steps, distance, and time spent at 4 possible activity levels:  
+a. Very Active  
+b. Fairly Active  
+c. Lightly Active
+d. Sendentary  
+
+In order for ActivityDate to work well in R I have changed the format in the
+original Excel to YYYY-MM-DD before uploading to RStudio.  
+
+```{r}
+daily_activity <- read.csv("dailyActivity_merged.csv")
+nrow(daily_activity)
+head(daily_activity)
+glimpse(daily_activity)
+
+#Convert ActivityDate column from character to date
+daily_activity$ActivityDate = as.Date(daily_activity$ActivityDate)
+glimpse(daily_activity)
+```
+
+Check to see if total time for any entry > 1440 minutes (total mins in a day)
+
+```{r}
+daily_activity <- mutate(daily_activity, total_time = VeryActiveMinutes + FairlyActiveMinutes
+                         + LightlyActiveMinutes + SedentaryMinutes)
+error_file <- filter(daily_activity, total_time > 1440)
+nrow(error_file)
+```
+Zero rows in error_file indicates no rows in daily_activity > 1440 minutes.
+
+Although there are some participants with missing data for certain days, I 
+have decided to not exclude those participants because I'm not calculating 
+any statistics at this point and I would like to see any trends from all available data.  
+  
+A Quick Check of trends for Total Distance:  
+``` {r}
+ggplot(data=daily_activity)+
+  geom_line(mapping=aes(x=ActivityDate, y=TotalDistance, col=Id))+
+  xlab("Date") + ylab("Total Distance") +
+  theme(axis.text.x=element_blank()) +
+  facet_wrap(~Id)
+```
+  
+
+Check for trends in the time of activity.
+```{r message=FALSE, warning=FALSE}
+#Add up all activity minutes
+daily_activity <- mutate(daily_activity, active_time = total_time - SedentaryMinutes)
+#plot total daily activity time for each participant
+ggplot(data=daily_activity)+
+  geom_line(mapping=aes(x=ActivityDate, y=active_time, col=Id))+
+  xlab("Date") + ylab("Total Active Time") +
+  theme(axis.text.x=element_blank()) +
+  facet_wrap(~Id)
+```
+  
+Check for trends in the speed of activity.
+```{r warning=FALSE}
+#Calculate activity average speed (total activity distance/total activity time)
+daily_activity <- mutate(daily_activity, avg_speed = TotalDistance/active_time)
+ggplot(data = daily_activity) +
+  geom_line(mapping = aes(x=ActivityDate, y=avg_speed, col=Id))+
+  xlab("Date") + ylab("Average Speed of Activity")+
+  theme(axis.text.x = element_blank()) +
+  facet_wrap(~Id)
+```
+  
+The plots show most of the participants are inconsistent in their activity
+and are not able to sustain a consistent level.  
+
+It would be interesting to see if the activities were to be divided into 7-day blocks, whether the participants meet the American Heart Association guideline for 150 minutes of heart-pumping exercise (VeryActiveMinutes) every week.  
+  
+```{r}
+#Split the daily_activity file into chunks of 7-day file
+very_active_week1 <- filter(daily_activity, ActivityDate <= '2016-04-18')
+very_active_week2 <- filter(daily_activity, ActivityDate > '2016-04-18' 
+                             & ActivityDate <= '2016-04-25')
+very_active_week3 <- filter(daily_activity, ActivityDate > '2016-04-25' 
+                            & ActivityDate <= '2016-05-01')
+very_active_week4 <- filter(daily_activity, ActivityDate > '2016-05-01' 
+                            & ActivityDate <= '2016-05-08')
+very_active_no_use <- filter(daily_activity, ActivityDate > '2016-05-08')
+
+#Check if total rows of weekly files adds up to total rows of original data file
+nrow(very_active_week1) + nrow(very_active_week2) + nrow(very_active_week3) + nrow(very_active_week4) + nrow(very_active_no_use) - nrow(daily_activity) 
+
+```
+  
+Satisfied no rows are missing. 
+  
+```{r}
+#Find the total weekly VeryActiveMinutes for each participant
+week1_veryactive_sum <- aggregate(VeryActiveMinutes~Id, very_active_week1, sum)
+week2_veryactive_sum <- aggregate(VeryActiveMinutes~Id, very_active_week2, sum)
+week3_veryactive_sum <- aggregate(VeryActiveMinutes~Id, very_active_week3, sum)
+week4_veryactive_sum <- aggregate(VeryActiveMinutes~Id, very_active_week4, sum)
+
+```
+
+  
+View the weekly VeryActiveMinutes as a histogram to see how many participants
+meet the American Heart Association guidelines
+
+```{r}
+#week1
+hist(week1_veryactive_sum$VeryActiveMinutes, 
+     main = "Week1: Participants With Very Active Minutes",
+     xlab = "Very Active Minutes",
+     ylab = "Participants",
+     xlim = c(0,850),
+     breaks = c(0,150,300,450,600,750,900),
+     col = "magenta"
+     )
+#week2
+hist(week2_veryactive_sum$VeryActiveMinutes, 
+     main = "Week2: Participants With Very Active Minutes",
+     xlab = "Very Active Minutes",
+     ylab = "Participants",
+     xlim = c(0,850),
+     breaks = c(0,150,300,450,600,750,900),
+     col = "magenta"
+)
+#week3
+hist(week3_veryactive_sum$VeryActiveMinutes, 
+     main = "Week3: Participants With Very Active Minutes",
+     xlab = "Very Active Minutes",
+     ylab = "Participants",
+     xlim = c(0,850),
+     breaks = c(0,150,300,450,600,750,900),
+     col = "magenta"
+)
+#week4
+hist(week1_veryactive_sum$VeryActiveMinutes, 
+     main = "Week4: Participants With Very Active Minutes",
+     xlab = "Very Active Minutes",
+     ylab = "Participants",
+     xlim = c(0,850),
+     breaks = c(0,150,300,450,600,750,900),
+     col = "magenta"
+)
+
+```
+  
+To identify participants that had greater than 150 minutes VeryActiveTime for all 4 weeks
+
+```{r}
+#Collect Id of participants with greater or equal to 150 mins very active minutes
+#per week
+very_active_id_week1 <- filter(week1_veryactive_sum, VeryActiveMinutes >= 150)
+
+very_active_id_week2 <- filter(week2_veryactive_sum, VeryActiveMinutes >= 150)
+
+very_active_id_week3 <- filter(week3_veryactive_sum, VeryActiveMinutes >= 150)
+
+very_active_id_week4 <- filter(week4_veryactive_sum, VeryActiveMinutes >= 150)
+
+
+#Find Id that are present in all 4 weeks
+library(dplyr)
+w1w2_common = very_active_id_week1 %>% inner_join(very_active_id_week2,
+                                                  by="Id")
+w1w2w3_common = w1w2_common %>% inner_join(very_active_id_week3,
+                                                  by="Id")
+w1w2w3w4_common = w1w2w3_common%>% inner_join(very_active_id_week4,
+                                              by="Id")
+
+```
+  
+  
+Only 6 out of 33 participants had over 150 minutes of VeryActiveMinutes
+consistently for all 4 weeks.  
+  
+Let's visualize and compare the weekly very active minutes of the 6 participants
+
+```{r}
+#Rename columns to Week1, Week2, Week3, Week4
+names(w1w2w3w4_common)[2] <- 'week1'
+names(w1w2w3w4_common)[3] <- 'week2'
+names(w1w2w3w4_common)[4] <- 'week3'
+names(w1w2w3w4_common)[5] <- 'week4'
+#Covert wide dataset to long
+w1234_common_long <- w1w2w3w4_common %>%
+  gather("week", "minutes", -Id)
+#Convert the Id field from numeric to character for ease of plotting and check
+w1234_common_long$Id <- as.character((w1234_common_long$Id))
+str(w1234_common_long)
+#Plot the very active minutes
+ggplot(w1234_common_long, aes(x=Id, y=minutes, fill= week, width = 0.5)) +
+  geom_col(position = "dodge")+
+  ggtitle("Very Active Participants", subtitle = "Over 150 minutes/week") +
+  xlab("Participant ID") + ylab("Minutes")
+```
+
+  
+Next, let's explore if there is any correlation between length of VeryActiveMinutes and quality of sleep. I would like to look at activity versus %time asleep out of total time in bed.
+
+Uploading sleepDay_merged file after changing the format of SleepDay column to YYYY-MM-DD in excel.
+
+```{r}
+sleep_day <- read.csv("sleepDay_merged.csv")
+head(sleep_day)
+glimpse(sleep_day)
+```
+
+SleepDay column is in the format "yyyy-mm-dd hh:mm". Split the column to seperate date from time
+```{r}
+sleep_day <- tidyr::separate(
+  data = sleep_day,
+  col = SleepDay,
+  sep = " ",
+  into = c("date","time"),
+  remove = FALSE
+)
+head(sleep_day)
+glimpse(sleep_day)
+```
+  
+In order to merge the sleep_day dataset with daily_activity dataset I have to create primary and foreign key columns. I'll do that by combining the Id field with the date field in each dataset.
+```{r}
+#sleep dataset
+sleep_day$Id_date <- paste(sleep_day$Id,"-", sleep_day$date)
+head(sleep_day)
+
+#daily_activity dataset
+daily_activity$Id_date <- paste(daily_activity$Id,"-",daily_activity$ActivityDate)
+head(daily_activity)
+
+```
+  
+Calculate percent of time participant is asleep in bed
+```{r}
+sleep_day <- mutate(sleep_day,sleep_percent = (TotalMinutesAsleep/TotalTimeInBed)*100)
+head(sleep_day)
+```
+  
+Do an inner_join on the two datasets to only include records that have common day and Id.
+
+```{r}
+activity_vs_sleep <- sleep_day %>% inner_join(daily_activity, by="Id_date")
+head(activity_vs_sleep)
+
+```
+  
+Now we can plot time asleep in bed against the day's very active minutes
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data=activity_vs_sleep)  + 
+  geom_point(mapping=aes(x=VeryActiveMinutes, y=sleep_percent)) +
+  scale_y_continuous(limits = c(40, 100.00000000)) +
+  xlab("Daily Very Active Minutes") + ylab("%Time Asleep In Bed")+
+  labs(title = "Asleep In Bed After Very Active Minutes") +
+  annotate("text", x=100, y = 80, 
+           label = "It seems 50 minutes of intense activity gets you to sleep fast", 
+           color="magenta", fontface='bold', size=3, angle=0)+
+  stat_smooth(method="lm", aes(x=VeryActiveMinutes, y=sleep_percent))+
+  stat_regline_equation(label.x=100, label.y=70,aes(x=VeryActiveMinutes, y=sleep_percent,
+                            label = ..rr.label..))
+```
+  
+Almost all except a few data points fall above the 80% line. Let's look at the participants that less than 80% of time in bed asleep  
+
+```{r}
+toss_turn <- filter(activity_vs_sleep, activity_vs_sleep$sleep_percent < 80)
+head(toss_turn)
+```
+  
+We find that 28 of the 31 data points below 80% asleep time belong to the same participant (Id# 3977333714). This suggests this participant is an outlier. Exclude from the dataset particiapnt Id 3977333714.
+
+```{r}
+no_toss_turn <- activity_vs_sleep %>% filter_all(all_vars(.!=3977333714))
+
+```
+  
+Let's plot time asleep in bed against the day's very active minutes again. 
+
+```{r}
+ggplot(data=no_toss_turn)  + 
+  geom_point(mapping=aes(x=VeryActiveMinutes, y=sleep_percent)) +
+  scale_y_continuous(limits = c(40, 100.00000000)) +
+  xlab("Daily Very Active Minutes") + ylab("%Time Asleep In Bed")+
+  labs(title = "Asleep In Bed After Very Active Minutes")+
+  stat_smooth(method="lm", aes(x=VeryActiveMinutes, y=sleep_percent))+
+  stat_regline_equation(label.x=100, label.y=70,aes(x=VeryActiveMinutes, y=sleep_percent,
+                            label = ..rr.label..))
+```
+  
+When the data is plotted again, it shows activity level does not have any impact on time spent awake in bed.
+
+  
+Exploring the correlation with lower levels of activity
+```{r}
+#Farily Active
+ggplot(data=no_toss_turn)  + 
+  geom_point(mapping=aes(x=FairlyActiveMinutes, y=sleep_percent)) +
+  scale_y_continuous(limits = c(40, 100.00000000)) +
+  xlab("Daily Fairly Active Minutes") + ylab("%Time Asleep In Bed")+
+  labs(title = "Asleep In Bed After Fairly Active Minutes")+
+  stat_smooth(method="lm", aes(x=FairlyActiveMinutes, y=sleep_percent))+
+  stat_regline_equation(label.x=25, label.y=70,aes(x=FairlyActiveMinutes, y=sleep_percent,
+                            label = ..rr.label..))
+#Lightly Active
+ggplot(data=no_toss_turn)  + 
+  geom_point(mapping=aes(x=LightlyActiveMinutes, y=sleep_percent)) +
+  scale_y_continuous(limits = c(40, 100.00000000)) +
+  xlab("Daily Lightly Active Minutes") + ylab("%Time Asleep In Bed")+
+  labs(title = "Asleep In Bed After Lightly Active Minutes")+
+  stat_smooth(method="lm", aes(x=LightlyActiveMinutes, y=sleep_percent))+
+  stat_regline_equation(label.x=200, label.y=70,aes(x=LightlyActiveMinutes, y=sleep_percent,
+                            label = ..rr.label..))
+#Sedentary 
+ggplot(data=no_toss_turn)  + 
+  geom_point(mapping=aes(x=SedentaryMinutes, y=sleep_percent)) +
+  scale_y_continuous(limits = c(40, 100.00000000)) +
+  xlab("Daily Sedentary Minutes") + ylab("%Time Asleep In Bed") +
+  labs(title = "Asleep In Bed After Sedentary Minutes")+
+  stat_smooth(method="lm", aes(x=SedentaryMinutes, y=sleep_percent))+
+  stat_regline_equation(label.x=500, label.y=70, aes(x=SedentaryMinutes, y=sleep_percent,
+                            label = ..rr.label..))
+
+```
+  
+None of the activity levels seem to have a correlation with time spent in bed awake.
+  
+### Weight Data:
+  
+A review of the weight data available is completed in excel as it is limited and excel is a good tool for this purpose. Only 8 participants have logged their weight data and that too sporadically. Interestingly 3 out of those 8 are also on the list of 6 that consistently performed more than 150 minutes of VeryActive workout each week.  
+Another observation on the weights data is that 5 of the 8 participants were logging weight manually even though Fitbit offers capabilities to sync with many weight measuring devices. Although this is a very small sample and not statistically valid, it suggests difficulty in logging weight. Perhaps syncing with devices is difficult and manual entry too cumbersome. 
+  
+  
+### Heartrate Data:
+  
+Heart rate data could have been very useful if it could be tied with workout intensity. However, workout intensity data is in hour intervals and heart rate is in second intervals.  Since heartrates vary significantly during the course of exercising, summarizing to an hourly interval provides no value. Furthermore, target heartrate depends upon age according to the [American Heart Association](https://www.heart.org/en/healthy-living/fitness/fitness-basics/target-heart-rates) and our dataset does not include participant age.
+  
+  
+## Insights:
+1. Few participants (18%) consistently workout to meet the American Heart Association guidelines.  
+2. Fitbit monitors heart rate but the data is not summarized in a way to track improvement in cardiovascular health or compare with American Heart Association guidelines.  
+3. Few particpants log their weight. Further research is necessary to find out the reason. Is it inconvenient? Is there a disincentive? Other reasons?  
+4. Logging of sleep is lacking. Further research is necessary to find the reasons.  
+5. Activity level does not have any impact on how quickly participants fall off to sleep once they go to bed.  
+  
+## Recommendations:  
+1. It has been documented that risks to cardiac health of women has been historically downplayed but medical professionals are now emphasizing it. Provide an easy way for customers to track how long they have maintained their target heart rate and how many more minutes they need to meet the American Heart Association's weekly guidelines for good cardiovascular health.  
+2. Encourage and make logging and tracking of weight easier. An example would be a built-in camera that the customer can use to take a picture of the weight on a digital weight scale and automatically enter it into the weight log with just one click. One possible way to encourage customers to weigh themselves would be to have an option to have a reminder icon or beep go off consistently at chosen time of day. 
+3. Similar to logging of weight, find ways to allow customers to track sleep more conveniently. Emphasize the relationship between sleep quality and quantity with health and beauty. 
+
+
