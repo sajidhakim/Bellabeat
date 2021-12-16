@@ -20,7 +20,7 @@ The scenario consists of me, as a junior data analyst, working for Bellabeat. Be
 ## Assignment:
 Bellabeat’s cofounder, Urska Srsen has asked me to analyze smart device data from Fitbit to gain insight as to how consumers are using smart devices and use this knowledge to guide the marketing strategy of Bellabeat.  
   
-It should be noted that many others have already dissected this data for insights as part of their Capstone and most of the obvious and logical relationships have been explored. From my point of curiosity, I wanted to attempt at digging a little deeper into the data. For that purpose instead of rehashing the relationshps between steps and calories I'll be looking at weekly minutes of hi-intensity workout. Similarly, instead of looking at the relationship between length of sleep or depth of sleep and workout routine, I'm going to look at the time a participant is actually asleep in bed (instead of tossing and turning, waiting for sleep) out of the total time spent in bed. These may not reveal any eye-opening insights but would satisfy my curiosity and allow me to practice my recently acquired skills.
+It should be noted that many others have already dissected this data for insights as part of their Capstone and most of the obvious and logical relationships have been explored. From my point of curiosity, I wanted to attempt at digging a little deeper into the data. For that purpose in addition to exploring the relationshps between steps or length of exercise time and calories I'll be looking at weekly minutes of hi-intensity workout. Similarly, instead of looking at the relationship between length of sleep or depth of sleep and workout routine, I'm going to look at the time a participant is actually asleep in bed (instead of tossing and turning, waiting for sleep) out of the total time spent in bed. These may not reveal any eye-opening insights but would satisfy my curiosity and allow me to practice my recently acquired skills.
 
 ## Data:
 
@@ -40,7 +40,9 @@ b.	Data belongs to those Fitbit users who have given permission for their person
 ## Setting up the Environment
 Install and load packages
 * tidyverse
-* ggplot2
+* ggplot2    
+* ggpubr  
+* dpylr
 
 ```{r}
 installed.packages("tidyverse")
@@ -49,12 +51,16 @@ installed.packages("ggplot2")
 library(ggplot2)
 installed.packages("ggpbr")
 library(ggpubr)
+library(magrittr)
+library(dplyr)
 
 ```
 
 ## Analysis Plan:
-Having reviewed the datasets I am curious to see whether there are any trends visible for daily activity (improvement over the period). I'm going to explore trends for each participant in terms of Total Distance, Total Activity Time, and finally, Activity Speed (Total Distance/Total Activity Time) to see if any trends develop. The results of this analysis will guide to further steps.  
-  
+Two of the main reasons for exercising are:  
+a) Weight loss (burning calories)  
+I'm going to explore the relationship between Calories burned to Total Distance, Total Steps, Total Activity Time, and finally, Activity Speed (Total Distance/Total Activity Time) to see which is the best predictor. The results of this analysis will guide to further steps.  
+b) Cardiovascular health    
 Next, I referred to the American Heart Association website for objective measures
 and recommendations for daily activity [American Heart Association](https://www.heart.org/en/healthy-living/fitness/fitness-basics/aha-recs-for-physical-activity-in-adults). The website recommends
 150 minutes of "heart-pumping" exercise per week. It also provides a chart for ideal heart-rate during this period but this rate varies by age. Not having participant age as one of the fields in my dataset, I have decided to use the field titled "VeryActiveMinutes" as a proxy to represent work-out time at the recommended heart-rate. I am going to see how many participants consistently 
@@ -72,7 +78,7 @@ participant does before finally falling off to sleep.
 I will be using the dailyActivity_merged.csv data file which presents each participants daily steps, distance, and time spent at 4 possible activity levels:  
 a. Very Active  
 b. Fairly Active  
-c. Lightly Active
+c. Lightly Active  
 d. Sendentary  
 
 In order for ActivityDate to work well in R I have changed the format in the
@@ -101,8 +107,109 @@ Zero rows in error_file indicates no rows in daily_activity > 1440 minutes.
 
 Although there are some participants with missing data for certain days, I 
 have decided to not exclude those participants because I'm not calculating 
-any statistics at this point and I would like to see any trends from all available data.  
+any statistics at this point and I would like to see any trends from all available data. 
   
+We will be exploring "speed" of activity defined as the ratio of total distance covered by steps and total active time spent
+
+```{r}
+#Add up all activity minutes
+daily_activity <- mutate(daily_activity, active_time = total_time - SedentaryMinutes)
+
+#Calculate activity average speed (total activity distance/total activity time)
+daily_activity <- mutate(daily_activity, avg_speed = TotalDistance/active_time)
+
+```
+  
+Let us find out what is, on average, the best predictor of calories burned
+```{r message=FALSE, warning=FALSE}
+#Calculate Daily Averages
+mean_of_data <- daily_activity %>% group_by(ActivityDate) %>%
+  summarise(mean_daily_distance=mean(TotalDistance), 
+            mean_daily_steps=mean(TotalSteps), mean_daily_time=mean(active_time),
+            mean_daily_calories=mean(Calories))
+
+#Plot Distance against the mean daily calories burned
+ggplot(data=mean_of_data) + 
+  geom_point(mapping=aes(x=mean_daily_distance, y = mean_daily_calories))+
+  geom_smooth(method="lm", aes(x=mean_daily_distance, y = mean_daily_calories))+
+  stat_regline_equation(label.x=4, label.y=2500, 
+                        aes(x=mean_daily_distance, y = mean_daily_calories, label=..rr.label..))+
+  labs(title="Calories Burned By Distance")+
+  xlab("Mean Daily Distance") + ylab("Mean Daily Calories")+
+  xlim(2,7)+ ylim(0,3000)
+```
+
+One of the points is an obvious outlier. Let's take a closer look at our dataset. The data for May 12th seem excessively low and not representative of the sample population. I will exclude from further analysis.
+
+```{r}
+
+mean_of_data <- filter(mean_of_data, mean_of_data$ActivityDate!="2016-05-12")
+
+mean_of_data <- mutate(mean_of_data, mean_daily_speed=
+                         mean_daily_distance/mean_daily_time)
+
+#Plot Distance against the mean daily calories burned
+ggplot(data=mean_of_data) + 
+  geom_point(mapping=aes(x=mean_daily_distance, y = mean_daily_calories))+
+  geom_smooth(method="lm", aes(x=mean_daily_distance, y = mean_daily_calories))+
+  stat_regline_equation(label.x=4, label.y=2500, 
+                        aes(x=mean_daily_distance, y = mean_daily_calories, label=..rr.label..))+
+  labs(title="Calories Burned By Distance")+
+  xlab("Mean Daily Distance") + ylab("Mean Daily Calories")+
+  xlim(4,7)
+
+#Plot Steps against the mean daily calories burned
+ggplot(data=mean_of_data) + 
+  geom_point(mapping=aes(x=mean_daily_steps, y = mean_daily_calories))+
+  geom_smooth(method="lm", aes(x=mean_daily_steps, y = mean_daily_calories))+
+  stat_regline_equation(label.x=6000, label.y=2500, 
+                        aes(x=mean_daily_steps, y = mean_daily_calories, label=..rr.label..))+
+  labs(title="Calories Burned By Steps")+
+  xlab("Mean Daily Steps") + ylab("Mean Daily Calories")+
+  xlim(6000,8500)
+
+#Plot Activity Time against the mean daily calories burned
+ggplot(data=mean_of_data) + 
+  geom_point(mapping=aes(x=mean_daily_time, y = mean_daily_calories))+
+  geom_smooth(method="lm", aes(x=mean_daily_time, y = mean_daily_calories))+
+  stat_regline_equation(label.x=200, label.y=2500, 
+                        aes(x=mean_daily_time, y = mean_daily_calories, label=..rr.label..))+
+  labs(title="Calories Burned By Time Exercising")+
+  xlab("Mean Activity Minutes") + ylab("Mean Daily Calories")+
+  xlim(200,300)
+
+#Plot Speed of Activity against the mean daily calories burned
+ggplot(data=mean_of_data) + 
+  geom_point(mapping=aes(x=mean_daily_speed, y = mean_daily_calories))+
+  geom_smooth(method="lm", aes(x=mean_daily_speed, y = mean_daily_calories))+
+  stat_regline_equation(label.x=0.02, label.y=2500, 
+                        aes(x=mean_daily_speed, y = mean_daily_calories, label=..rr.label..))+
+  labs(title="Calories Burned By Speed of Activities")+
+  xlab("Mean Activity Speed") + ylab("Mean Daily Calories")+
+  xlim(0.02,0.0275) 
+
+```
+  
+None of the matrices offer a very strong correlation coefficient but distance covered offers the best correlation with carlories burned.  
+
+Explore how activity varies by day of week
+```{r}
+#Convert ActivityDate to weekdays
+mean_of_data$week_day = weekdays(mean_of_data$ActivityDate)
+
+#Plot Amount of time Exercised against the day of week
+ggplot(data = mean_of_data)+
+  geom_line(mapping=aes(x=ActivityDate, y=mean_daily_time))+
+  labs(title="Activity Time By Day of Week")+
+  xlab("Day of Week")  + ylab("Average Activity Time")+
+  scale_x_date(date_breaks = "day", 
+               date_labels = "%a")+
+  theme(axis.text.x=element_text(angle=90))
+              
+```
+  
+Interestingly, it seems active time generally highest on Saturdays and lowest on Sundays.  
+
 A Quick Check of trends for Total Distance:  
 ``` {r}
 ggplot(data=daily_activity)+
@@ -115,8 +222,7 @@ ggplot(data=daily_activity)+
 
 Check for trends in the time of activity.
 ```{r message=FALSE, warning=FALSE}
-#Add up all activity minutes
-daily_activity <- mutate(daily_activity, active_time = total_time - SedentaryMinutes)
+
 #plot total daily activity time for each participant
 ggplot(data=daily_activity)+
   geom_line(mapping=aes(x=ActivityDate, y=active_time, col=Id))+
@@ -127,8 +233,6 @@ ggplot(data=daily_activity)+
   
 Check for trends in the speed of activity.
 ```{r warning=FALSE}
-#Calculate activity average speed (total activity distance/total activity time)
-daily_activity <- mutate(daily_activity, avg_speed = TotalDistance/active_time)
 ggplot(data = daily_activity) +
   geom_line(mapping = aes(x=ActivityDate, y=avg_speed, col=Id))+
   xlab("Date") + ylab("Average Speed of Activity")+
@@ -234,7 +338,7 @@ w1w2w3_common = w1w2_common %>% inner_join(very_active_id_week3,
                                                   by="Id")
 w1w2w3w4_common = w1w2w3_common%>% inner_join(very_active_id_week4,
                                               by="Id")
-
+head(w1w2w3w4_common)
 ```
   
   
@@ -320,9 +424,9 @@ ggplot(data=activity_vs_sleep)  +
   scale_y_continuous(limits = c(40, 100.00000000)) +
   xlab("Daily Very Active Minutes") + ylab("%Time Asleep In Bed")+
   labs(title = "Asleep In Bed After Very Active Minutes") +
-  annotate("text", x=100, y = 80, 
-           label = "It seems 50 minutes of intense activity gets you to sleep fast", 
-           color="magenta", fontface='bold', size=3, angle=0)+
+  annotate("text", x=50, y = 70, 
+           label = "It seems 50 or more minutes of intense activity gets you to sleep fast", 
+           color="magenta", fontface='bold', size=3.1, angle=90)+
   stat_smooth(method="lm", aes(x=VeryActiveMinutes, y=sleep_percent))+
   stat_regline_equation(label.x=100, label.y=70,aes(x=VeryActiveMinutes, y=sleep_percent,
                             label = ..rr.label..))
@@ -347,12 +451,11 @@ Let's plot time asleep in bed against the day's very active minutes again.
 ```{r}
 ggplot(data=no_toss_turn)  + 
   geom_point(mapping=aes(x=VeryActiveMinutes, y=sleep_percent)) +
-  scale_y_continuous(limits = c(40, 100.00000000)) +
+  scale_y_continuous(limits = c(60, 100.00000000)) +
   xlab("Daily Very Active Minutes") + ylab("%Time Asleep In Bed")+
   labs(title = "Asleep In Bed After Very Active Minutes")+
   stat_smooth(method="lm", aes(x=VeryActiveMinutes, y=sleep_percent))+
-  stat_regline_equation(label.x=100, label.y=70,aes(x=VeryActiveMinutes, y=sleep_percent,
-                            label = ..rr.label..))
+  stat_regline_equation(label.x=100, label.y=70,aes(x=VeryActiveMinutes, y=sleep_percent,label = ..rr.label..))
 ```
   
 When the data is plotted again, it shows activity level does not have any impact on time spent awake in bed.
@@ -363,7 +466,7 @@ Exploring the correlation with lower levels of activity
 #Farily Active
 ggplot(data=no_toss_turn)  + 
   geom_point(mapping=aes(x=FairlyActiveMinutes, y=sleep_percent)) +
-  scale_y_continuous(limits = c(40, 100.00000000)) +
+  scale_y_continuous(limits = c(60, 100.00000000)) +
   xlab("Daily Fairly Active Minutes") + ylab("%Time Asleep In Bed")+
   labs(title = "Asleep In Bed After Fairly Active Minutes")+
   stat_smooth(method="lm", aes(x=FairlyActiveMinutes, y=sleep_percent))+
@@ -372,7 +475,7 @@ ggplot(data=no_toss_turn)  +
 #Lightly Active
 ggplot(data=no_toss_turn)  + 
   geom_point(mapping=aes(x=LightlyActiveMinutes, y=sleep_percent)) +
-  scale_y_continuous(limits = c(40, 100.00000000)) +
+  scale_y_continuous(limits = c(60, 100.00000000)) +
   xlab("Daily Lightly Active Minutes") + ylab("%Time Asleep In Bed")+
   labs(title = "Asleep In Bed After Lightly Active Minutes")+
   stat_smooth(method="lm", aes(x=LightlyActiveMinutes, y=sleep_percent))+
@@ -381,16 +484,15 @@ ggplot(data=no_toss_turn)  +
 #Sedentary 
 ggplot(data=no_toss_turn)  + 
   geom_point(mapping=aes(x=SedentaryMinutes, y=sleep_percent)) +
-  scale_y_continuous(limits = c(40, 100.00000000)) +
+  scale_y_continuous(limits = c(60, 100.00000000)) +
   xlab("Daily Sedentary Minutes") + ylab("%Time Asleep In Bed") +
   labs(title = "Asleep In Bed After Sedentary Minutes")+
   stat_smooth(method="lm", aes(x=SedentaryMinutes, y=sleep_percent))+
-  stat_regline_equation(label.x=500, label.y=70, aes(x=SedentaryMinutes, y=sleep_percent,
-                            label = ..rr.label..))
+  stat_regline_equation(label.x=500, label.y=70, aes(x=SedentaryMinutes, y=sleep_percent, label = ..rr.label..))
 
 ```
   
-None of the activity levels seem to have a correlation with time spent in bed awake.
+None of the activity levels seem to have a correlation with what fraction of total time in bed the participant is actually asleep.
   
 ### Weight Data:
   
@@ -404,15 +506,19 @@ Heart rate data could have been very useful if it could be tied with workout int
   
   
 ## Insights:
-1. Few participants (18%) consistently workout to meet the American Heart Association guidelines.  
-2. Fitbit monitors heart rate but the data is not summarized in a way to track improvement in cardiovascular health or compare with American Heart Association guidelines.  
-3. Few particpants log their weight. Further research is necessary to find out the reason. Is it inconvenient? Is there a disincentive? Other reasons?  
-4. Logging of sleep is lacking. Further research is necessary to find the reasons.  
-5. Activity level does not have any impact on how quickly participants fall off to sleep once they go to bed.  
+1. Most activity occurs on Saturdays and least on Sundays. 
+2. Few participants (18%) consistently workout to meet the American Heart Association guidelines.  
+3. Fitbit monitors heart rate but the data is not summarized in a way to track improvement in cardiovascular health or compare with American Heart Association guidelines.  
+4. Few particpants log their weight. Further research is necessary to find out the reason. Is it inconvenient? Is there a disincentive? Other reasons?  
+5. Logging of sleep is lacking. Further research is necessary to find the reasons.  
+6. Activity level does not have any impact on how quickly participants fall off to sleep once they go to bed.  
+7. The best predictor of calories burned is the amount of distance traveled.
   
 ## Recommendations:  
-1. It has been documented that risks to cardiac health of women has been historically downplayed but medical professionals are now emphasizing it. Provide an easy way for customers to track how long they have maintained their target heart rate and how many more minutes they need to meet the American Heart Association's weekly guidelines for good cardiovascular health.  
-2. Encourage and make logging and tracking of weight easier. An example would be a built-in camera that the customer can use to take a picture of the weight on a digital weight scale and automatically enter it into the weight log with just one click. One possible way to encourage customers to weigh themselves would be to have an option to have a reminder icon or beep go off consistently at chosen time of day. 
-3. Similar to logging of weight, find ways to allow customers to track sleep more conveniently. Emphasize the relationship between sleep quality and quantity with health and beauty. 
+1. Knowing that partipants spend the longest time exercising Saturdays could be monetized. Example, for selling advertisements  
+2. It has been documented that risks to cardiac health of women has been historically downplayed but medical professionals are now emphasizing it. Provide an easy way for customers to track how long they have maintained their target heart rate and how many more minutes they need to meet the American Heart Association's weekly guidelines for good cardiovascular health.  
+3. Encourage and make logging and tracking of weight easier. An example would be a built-in camera that the customer can use to take a picture of the weight on a digital weight scale and automatically enter it into the weight log with just one click. One possible way to encourage customers to weigh themselves would be to have an option to have a reminder icon or beep go off consistently at chosen time of day. 
+4. Similar to logging of weight, find ways to allow customers to track sleep more conveniently. Emphasize the relationship between sleep quality and quantity with health and beauty. Our analysis did not show any correleation between steps and sleep quality. Research to find an actiivty that correlates with sleep (such as meditation) can lead to a marketing opportunity.
+
 
 
